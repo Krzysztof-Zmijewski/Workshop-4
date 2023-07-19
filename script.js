@@ -40,10 +40,16 @@ function renderTask (taskId, title, description, status,) {
     headerDiv.appendChild(headerThirdDiv);
 
     if(status === "open"){
-        const finnishButton = document.createElement("button");
-        finnishButton.className = "btn btn-dark btn-sm js-task-open-only";
-        finnishButton.innerText = "Finish";
-        headerThirdDiv.appendChild(finnishButton);
+        const finishButton = document.createElement("button");
+        finishButton.className = "btn btn-dark btn-sm js-task-open-only";
+        finishButton.innerText = "Finish";
+        headerThirdDiv.appendChild(finishButton);
+        finishButton.addEventListener('click', function() {
+            apiUpdateTask(taskId, title, description, 'closed');
+            section.querySelectorAll('.js-task-open-only').forEach(
+                function(element) { element.parentElement.removeChild(element); }
+            );
+        });
     }
 
     const deleteButton = document.createElement("button");
@@ -92,10 +98,19 @@ function renderTask (taskId, title, description, status,) {
     liButtonDelete.className = "btn btn-outline-danger btn-sm";
     liButtonDelete.innerText = "Delete";
     liSecondDiv.appendChild(liButtonDelete);
+    apiListOperationsForTask(taskId).then(
+        function(response) {
+            response.data.forEach(
+                function(operation) {
+                    renderOperation(ul, status, operation.id, operation.description, operation.timeSpent);
+                }
+            );
+        }
+    );
 
     if( status === "open") {
         const thirdDiv = document.createElement("div");
-        thirdDiv.className = "card-body";
+        thirdDiv.className = "card-body js-task-open-only";
         section.appendChild(thirdDiv);
 
         const form = document.createElement("form");
@@ -111,6 +126,19 @@ function renderTask (taskId, title, description, status,) {
         input.setAttribute('minlength', '5');
         input.minLength = 5;
         formDiv.appendChild(input);
+
+        const inputDiv = document.createElement("div");
+        input.className = "input-group-append";
+        formDiv.appendChild(inputDiv);
+
+        const inputButton = document.createElement("button");
+        inputButton.className = "btn btn-info";
+        inputButton.innerText = "Add";
+        inputDiv.appendChild(inputButton);
+
+        const ul = document.createElement('ul');
+        ul.className = 'list-group list-group-flush';
+        section.appendChild(ul);
         form.addEventListener('submit', function(event) {
             event.preventDefault();
             apiCreateOperationForTask(taskId, input.value).then(
@@ -126,28 +154,7 @@ function renderTask (taskId, title, description, status,) {
             );
         });
 
-        const inputDiv = document.createElement("div");
-        input.className = "input-group-append";
-        formDiv.appendChild(inputDiv);
 
-        const inputButton = document.createElement("button");
-        inputButton.className = "btn btn-info";
-        inputButton.innerText = "Add";
-        inputDiv.appendChild(inputButton);
-
-        const ul = document.createElement('ul');
-        ul.className = 'list-group list-group-flush';
-        section.appendChild(ul);
-
-        apiListOperationsForTask(taskId).then(
-            function(response) {
-                response.data.forEach(
-                    function(operation) {
-                        renderOperation(ul, status, operation.id, operation.description, operation.timeSpent);
-                    }
-                );
-            }
-        );
 
     }
     console.log("taskId to " + taskId);
@@ -180,7 +187,7 @@ function renderOperation(operationsList, status, operationId, operationDescripti
 
     const time = document.createElement('span');
     time.className = 'badge badge-success badge-pill ml-2';
-    time.innerText = timeSpent + 'm';
+    time.innerText = formatTime(timeSpent);
     descriptionDiv.appendChild(time);
 
     if(status === "open") {
@@ -192,19 +199,38 @@ function renderOperation(operationsList, status, operationId, operationDescripti
         add15minButton.className = 'btn btn-outline-success btn-sm mr-2';
         add15minButton.innerText = '+15m';
         controlDiv.appendChild(add15minButton);
+        add15minButton.addEventListener('click', function() {
+            apiUpdateOperation(operationId, operationDescription, timeSpent + 15).then(
+                function(response) {
+                    time.innerText = formatTime(response.data.timeSpent);
+                    timeSpent = response.data.timeSpent;
+                }
+            );
+        });
 
         const add1hButton = document.createElement('button');
         add1hButton.className = 'btn btn-outline-success btn-sm mr-2';
         add1hButton.innerText = '+1h';
         controlDiv.appendChild(add1hButton);
+        add1hButton.addEventListener('click', function() {
+            apiUpdateOperation(operationId, operationDescription, timeSpent + 60).then(
+                function(response) {
+                    time.innerText = formatTime(response.data.timeSpent);
+                    timeSpent = response.data.timeSpent;
+                }
+            );
+        });
 
         const deleteButton = document.createElement('button');
         deleteButton.className = 'btn btn-outline-danger btn-sm';
         deleteButton.innerText = 'Delete';
         controlDiv.appendChild(deleteButton);
-
+        deleteButton.addEventListener('click', function() {
+            apiDeleteOperation(operationId).then(
+                function() { li.parentElement.removeChild(li); }
+            );
+        });
     }
-    // ...
 }
 function formatTime(timeSpent) {
     const hours = Math.floor(timeSpent / 60);
@@ -226,7 +252,7 @@ function apiCreateTask(title, description) {
         }
     ).then(resp => {
             if(!resp.ok) {
-                alert('Wystąpił błąd! Otwórz devtools i zakładkę Sieć/Network, i poszukaj przyczyny');
+                alert('Wystąpił błąd!');
             }
             return resp.json();
         }
@@ -241,7 +267,7 @@ function apiDeleteTask (taskId) {
         }
     ).then(resp => {
             if(!resp.ok) {
-                alert('Wystąpił błąd! Otwórz devtools i zakładkę Sieć/Network, i poszukaj przyczyny');
+                alert('Wystąpił błąd!');
             }
             return resp.json();
         }
@@ -258,7 +284,56 @@ function apiCreateOperationForTask(taskId, description) {
         }
     ).then(resp => {
             if(!resp.ok) {
-                alert('Wystąpił błąd! Otwórz devtools i zakładkę Sieć/Network, i poszukaj przyczyny');
+                alert('Wystąpił błąd!');
+            }
+            return resp.json();
+        }
+    );
+}
+function apiUpdateOperation(operationId, description, timeSpent) {
+
+    return fetch(
+        apihost + '/api/operations/' + operationId,
+        {
+            headers: { Authorization: apikey, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ description: description, timeSpent: timeSpent }),
+            method: 'PUT'
+        }
+    ).then(resp => {
+            if(!resp.ok) {
+                alert('Wystąpił błąd!');
+            }
+            return resp.json();
+        }
+    );
+}
+function apiDeleteOperation(operationId) {
+    return fetch(
+        apihost + '/api/operations/' + operationId,
+        {
+            headers: { Authorization: apikey },
+            method: 'DELETE'
+        }
+    ).then(resp => {
+            if(!resp.ok) {
+                alert('Wystąpił błąd!');
+            }
+            return resp.json();
+        }
+    )
+}
+function apiUpdateTask(taskId, title, description, status) {
+
+    return fetch(
+        apihost + '/api/tasks/' + taskId,
+        {
+            headers: { Authorization: apikey, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: title, description: description, status: status }),
+            method: 'PUT'
+        }
+    ).then(resp => {
+            if(!resp.ok) {
+                alert('Wystąpił błąd!');
             }
             return resp.json();
         }
